@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    The plugin assembly references Dalamud / FFXIVClientStructs from the local dev install, so it is not referenced here.
+    Instead the Dalamud-free sources the queue core needs are LINKED (compiled into this test assembly).
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <RootNamespace>SocialCleanup.Tests</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="..\SocialCleanup\Friends\FriendEntry.cs" Link="Linked\FriendEntry.cs" />
+    <Compile Include="..\SocialCleanup\Friends\IFriendListReader.cs" Link="Linked\IFriendListReader.cs" />
+    <Compile Include="..\SocialCleanup\Removal\IFriendRemover.cs" Link="Linked\IFriendRemover.cs" />
+    <Compile Include="..\SocialCleanup\Removal\IRemovalAudit.cs" Link="Linked\IRemovalAudit.cs" />
+    <Compile Include="..\SocialCleanup\Removal\IRemovalQueue.cs" Link="Linked\IRemovalQueue.cs" />
+    <Compile Include="..\SocialCleanup\Removal\SendClassifier.cs" Link="Linked\SendClassifier.cs" />
+    <Compile Include="..\SocialCleanup\Removal\RemovalQueueCore.cs" Link="Linked\RemovalQueueCore.cs" />
+    <Compile Include="..\SocialCleanup\Removal\FastMode.cs" Link="Linked\FastMode.cs" />
+    <Compile Include="..\SocialCleanup\Removal\ReloadSuppressionCore.cs" Link="Linked\ReloadSuppressionCore.cs" />
+    <Compile Include="..\SocialCleanup\Removal\AuditLatchParser.cs" Link="Linked\AuditLatchParser.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.0.1" />
+    <PackageReference Include="xunit.v3" Version="3.2.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.5" />
+  </ItemGroup>
+
+</Project>

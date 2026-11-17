@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Dalamud.NET.Sdk/15.0.0">
+  <PropertyGroup>
+    <Authors>phys1ks</Authors>
+    <Version>0.0.1.0</Version>
+    <Description>Personal dev plugin: review and bulk-clean the friend list.</Description>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <Platforms>x64</Platforms>
+    <OutputPath>$(MSBuildThisFileDirectory)..\bin\$(Configuration)\</OutputPath>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <ProduceReferenceAssembly>false</ProduceReferenceAssembly>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+  </PropertyGroup>
+</Project>

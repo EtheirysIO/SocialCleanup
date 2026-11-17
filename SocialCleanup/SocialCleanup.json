@@ -1,0 +1,17 @@
+{
+  "Author": "phys1ks",
+  "Name": "Social Cleanup",
+  "Punchline": "Review and bulk-clean your friend list.",
+  "Description": "Personal dev plugin. Loads the friend list into a table so it can be reviewed, and (later) queues friend removals one at a time. Use /socialcleanup to open the window.",
+  "InternalName": "SocialCleanup",
+  "ApplicableVersion": "any",
+  "Tags": [
+    "social",
+    "friends",
+    "utility"
+  ],
+  "CategoryTags": [
+    "social",
+    "utility"
+  ]
+}
