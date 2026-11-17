@@ -5,6 +5,7 @@ using Dalamud.Game.ClientState.Conditions;
 using Dalamud.Plugin.Services;
 using FFXIVClientStructs.FFXIV.Client.UI.Info;
 using SocialCleanup.Friends;
+using SocialCleanup.Safety;
 
 namespace SocialCleanup.Removal;
 
@@ -52,6 +53,7 @@ public sealed unsafe class DirectFriendRemover : IFriendRemover, IDisposable
     private readonly List<(ulong Local, RemovalTarget Target, string Result, string Detail)> deferredReleased = new();
 
     public DirectFriendRemover(
+        VersionGate gate,
         ISigScanner scanner,
         IFramework framework,
         IClientState clientState,
@@ -62,6 +64,9 @@ public sealed unsafe class DirectFriendRemover : IFriendRemover, IDisposable
         IPluginLog log,
         StartupLatchCheck? startupLatch)
     {
+        // Defence in depth: before any signature scan, subscription or native read.
+        VersionGate.EnsurePassed(gate, nameof(DirectFriendRemover));
+
         this.framework = framework;
         this.clientState = clientState;
         this.playerState = playerState;

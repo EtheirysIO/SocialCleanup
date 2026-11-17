@@ -5,6 +5,7 @@ using Dalamud.Interface.Utility.Raii;
 using Dalamud.Interface.Windowing;
 using SocialCleanup.Friends;
 using SocialCleanup.Removal;
+using SocialCleanup.Safety;
 
 namespace SocialCleanup.Windows;
 
@@ -61,6 +62,9 @@ public sealed partial class MainWindow : Window, IDisposable
 
     /// <summary>Set by the plugin: the in-game Friend List window is open (a fast batch refuses to start then).</summary>
     internal Func<bool>? FriendListWindowOpen { get; set; }
+
+    /// <summary>Set by the plugin (always a passed gate here: the main window only exists when the gate passed).</summary>
+    internal VersionGate? GameVersionGate { get; set; }
 
     public void Dispose()
     {
@@ -139,6 +143,8 @@ public sealed partial class MainWindow : Window, IDisposable
             ImGui.TextColored(ColorWarn, refreshMessage);
         }
 
+        DrawGameVersionNote();
+
         if (!reader.IsCompletionHookActive)
             ImGui.TextColored(ColorWarn, "EndRequest completion hook is not active: the friend list cannot be loaded and removal stays disabled.");
         if (state == FriendListState.Invalid)
@@ -159,6 +165,17 @@ public sealed partial class MainWindow : Window, IDisposable
             ImGui.TextDisabled($"Skipped {snap.SkippedZeroIds} zero-id and {snap.SkippedDuplicates} duplicate rows (native count {snap.NativeEntryCount}).");
         if (state != FriendListState.Ready)
             ImGui.TextDisabled("Showing the last complete snapshot; it may be stale.");
+    }
+
+    /// <summary>Unobtrusive: detected game version on the header line, gate details in the tooltip.</summary>
+    private void DrawGameVersionNote()
+    {
+        if (GameVersionGate is not { } g)
+            return;
+        ImGui.SameLine();
+        ImGui.TextDisabled($"| game {g.DetectedVersion ?? "?"}");
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip($"Game-version gate {g.Summary}");
     }
 
     // ------------------------------------------------------------------ filters

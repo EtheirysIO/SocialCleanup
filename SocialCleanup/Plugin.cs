@@ -6,6 +6,7 @@ using Dalamud.Plugin;
 using Dalamud.Plugin.Services;
 using SocialCleanup.Friends;
 using SocialCleanup.Removal;
+using SocialCleanup.Safety;
 using SocialCleanup.Windows;
 
 namespace SocialCleanup;
@@ -34,6 +35,7 @@ public sealed class Plugin : IDalamudPlugin
 
     // Nullable so a partially failed constructor can dispose exactly what was built.
     private MainWindow? mainWindow;
+    private VersionBlockedWindow? blockedWindow;
     private DirectFriendRemover? remover;
     private ReloadSuppressor? suppressor;
     private SingleRemovalTest? singleTest;
@@ -45,23 +47,43 @@ public sealed class Plugin : IDalamudPlugin
 
     public Plugin()
     {
+        // FIRST, before anything else is created: the hard game-version gate (never throws; any doubt blocks).
+        Gate = GameVersionProbe.Check();
+
         try
         {
-            Configuration = PluginInterface.GetPluginConfig() as Configuration ?? new Configuration();
+            if (!Gate.Passed)
+            {
+                // Blocked: ONLY a static message window and the command that opens it. No configuration load, no reader /
+                // remover / suppressor / queue / single test, no signature scan, hook, native read, framework or chat
+                // subscription and no audit log. There is no override.
+                Log.Warning($"[VersionGate] {Gate.Summary} Plugin DISABLED: nothing is scanned, hooked, read or sent. " +
+                            $"Every signature/offset must be re-verified against the new game executable before {nameof(SupportedGameVersion)}.{nameof(SupportedGameVersion.Value)} is changed.");
+                blockedWindow = new VersionBlockedWindow(Gate);
+                windowSystem.AddWindow(blockedWindow);
+                RegisterCommandAndUi();
+                return;
+            }
 
-            friendList = new FriendListReader(Framework, ClientState, PlayerState, GameInterop, DataManager, Log, Configuration);
+            Log.Information($"[VersionGate] {Gate.Summary}");
+
+            var config = PluginInterface.GetPluginConfig() as Configuration ?? new Configuration();
+            Configuration = config;
+
+            friendList = new FriendListReader(Gate, Framework, ClientState, PlayerState, GameInterop, DataManager, Log, config);
             FriendList = friendList;
 
-            AuditLog = new RemovalAuditLog(PluginInterface.GetPluginConfigDirectory(), Log);
-            var startupLatch = AuditLog.CheckStartupLatch(StartupLatchMaxAge, DateTime.UtcNow);
-            remover = new DirectFriendRemover(SigScanner, Framework, ClientState, PlayerState, Condition, friendList, AuditLog, Log, startupLatch);
-            singleTest = new SingleRemovalTest(Framework, ChatGui, DataManager, friendList, remover, AuditLog, Configuration, Log);
+            var auditLog = new RemovalAuditLog(PluginInterface.GetPluginConfigDirectory(), Log);
+            AuditLog = auditLog;
+            var startupLatch = auditLog.CheckStartupLatch(StartupLatchMaxAge, DateTime.UtcNow);
+            remover = new DirectFriendRemover(Gate, SigScanner, Framework, ClientState, PlayerState, Condition, friendList, auditLog, Log, startupLatch);
+            singleTest = new SingleRemovalTest(Framework, ChatGui, DataManager, friendList, remover, auditLog, config, Log);
 
             // Fast mode hooks (reply handler + RequestData). Fail closed: when anything does not resolve / check out it
             // reports itself unavailable and only observes; the standard queue does not depend on it.
             try
             {
-                suppressor = new ReloadSuppressor(SigScanner, GameInterop, Framework, ClientState, DataManager, friendList, Log);
+                suppressor = new ReloadSuppressor(Gate, SigScanner, GameInterop, Framework, ClientState, DataManager, friendList, Log);
             }
             catch (Exception ex)
             {
@@ -71,7 +93,7 @@ public sealed class Plugin : IDalamudPlugin
 
             // Bulk queue. The single test and the queue exclude each other (both also go through the remover's latch).
             var test = singleTest;
-            queue = new RemovalQueue(Framework, ClientState, PlayerState, Condition, GameGui, friendList, remover, AuditLog, Configuration, Log,
+            queue = new RemovalQueue(Framework, ClientState, PlayerState, Condition, GameGui, friendList, remover, auditLog, config, Log,
                 externalBusy: () => test.IsInFlight ? "A single-friend removal test is in flight." : null,
                 suppressor: suppressor);
             var q = queue;
@@ -96,21 +118,14 @@ public sealed class Plugin : IDalamudPlugin
                 return t;
             };
 
-            mainWindow = new MainWindow(friendList, Configuration, queue: queue, remover: remover, saveConfig: SaveConfiguration);
+            mainWindow = new MainWindow(friendList, config, queue: queue, remover: remover, saveConfig: SaveConfiguration);
             mainWindow.AttachSingleTest(singleTest, remover);
             mainWindow.FriendListWindowOpen = () => q.IsFriendListWindowOpen;
-            mainWindow.AuditPathHint = AuditLog.FilePath;
+            mainWindow.AuditPathHint = auditLog.FilePath;
+            mainWindow.GameVersionGate = Gate;
             windowSystem.AddWindow(mainWindow);
 
-            CommandManager.AddHandler(CommandName, new CommandInfo(OnCommand)
-            {
-                HelpMessage = "Toggle the Social Cleanup window.",
-            });
-            commandAdded = true;
-
-            PluginInterface.UiBuilder.Draw += windowSystem.Draw;
-            PluginInterface.UiBuilder.OpenMainUi += ToggleMainUi;
-            uiHooked = true;
+            RegisterCommandAndUi();
         }
         catch (Exception ex)
         {
@@ -120,19 +135,48 @@ public sealed class Plugin : IDalamudPlugin
         }
     }
 
-    public Configuration Configuration { get; } = null!;
+    /// <summary>The game-version gate decided at construction. When not passed, only the blocked window exists.</summary>
+    internal VersionGate Gate { get; }
 
-    public IFriendListReader FriendList { get; } = null!;
+    /// <summary>Null when the version gate blocked (the configuration is then not even loaded).</summary>
+    public Configuration? Configuration { get; }
 
-    internal RemovalAuditLog AuditLog { get; } = null!;
+    /// <summary>Null when the version gate blocked.</summary>
+    public IFriendListReader? FriendList { get; }
+
+    /// <summary>Null when the version gate blocked.</summary>
+    internal RemovalAuditLog? AuditLog { get; }
 
     public void Dispose() => DisposeCore();
 
-    public void SaveConfiguration() => PluginInterface.SavePluginConfig(Configuration);
+    public void SaveConfiguration()
+    {
+        if (Configuration != null)
+            PluginInterface.SavePluginConfig(Configuration);
+    }
 
-    public void ToggleMainUi() => mainWindow?.Toggle();
+    public void ToggleMainUi()
+    {
+        if (mainWindow != null)
+            mainWindow.Toggle();
+        else
+            blockedWindow?.Toggle();
+    }
 
     private void OnCommand(string command, string args) => ToggleMainUi();
+
+    private void RegisterCommandAndUi()
+    {
+        CommandManager.AddHandler(CommandName, new CommandInfo(OnCommand)
+        {
+            HelpMessage = "Toggle the Social Cleanup window.",
+        });
+        commandAdded = true;
+
+        PluginInterface.UiBuilder.Draw += windowSystem.Draw;
+        PluginInterface.UiBuilder.OpenMainUi += ToggleMainUi;
+        uiHooked = true;
+    }
 
     /// <summary>Null-tolerant teardown in reverse construction order; each step isolated so one failure doesn't skip the rest.</summary>
     private void DisposeCore()

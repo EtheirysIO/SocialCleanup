@@ -8,6 +8,7 @@ using FFXIVClientStructs.FFXIV.Client.UI.Info;
 using Lumina.Excel;
 using Lumina.Excel.Sheets;
 using SocialCleanup.Removal;
+using SocialCleanup.Safety;
 using OnlineStatus = FFXIVClientStructs.FFXIV.Client.UI.Info.InfoProxyCommonList.CharacterData.OnlineStatus;
 
 namespace SocialCleanup.Friends;
@@ -71,6 +72,7 @@ public sealed unsafe class FriendListReader : IFriendListReader
     private volatile bool disposed;
 
     public FriendListReader(
+        VersionGate gate,
         IFramework framework,
         IClientState clientState,
         IPlayerState playerState,
@@ -79,6 +81,9 @@ public sealed unsafe class FriendListReader : IFriendListReader
         IPluginLog log,
         Configuration config)
     {
+        // Defence in depth: before any subscription, hook or native read.
+        VersionGate.EnsurePassed(gate, nameof(FriendListReader));
+
         this.framework = framework;
         this.clientState = clientState;
         this.playerState = playerState;

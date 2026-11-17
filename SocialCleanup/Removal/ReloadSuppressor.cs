@@ -6,6 +6,7 @@ using Dalamud.Plugin.Services;
 using FFXIVClientStructs.FFXIV.Client.UI.Info;
 using Lumina.Excel.Sheets;
 using SocialCleanup.Friends;
+using SocialCleanup.Safety;
 
 namespace SocialCleanup.Removal;
 
@@ -80,6 +81,7 @@ public sealed unsafe class ReloadSuppressor : IReloadSuppressor, IDisposable
     private volatile bool disposing;
 
     public ReloadSuppressor(
+        VersionGate gate,
         ISigScanner scanner,
         IGameInteropProvider interop,
         IFramework framework,
@@ -88,6 +90,9 @@ public sealed unsafe class ReloadSuppressor : IReloadSuppressor, IDisposable
         FriendListReader reader,
         IPluginLog log)
     {
+        // Defence in depth: before any signature scan, hook, subscription or native read.
+        VersionGate.EnsurePassed(gate, nameof(ReloadSuppressor));
+
         this.interop = interop;
         this.framework = framework;
         this.clientState = clientState;

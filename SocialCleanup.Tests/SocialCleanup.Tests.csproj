@@ -26,6 +26,8 @@
     <Compile Include="..\SocialCleanup\Removal\FastMode.cs" Link="Linked\FastMode.cs" />
     <Compile Include="..\SocialCleanup\Removal\ReloadSuppressionCore.cs" Link="Linked\ReloadSuppressionCore.cs" />
     <Compile Include="..\SocialCleanup\Removal\AuditLatchParser.cs" Link="Linked\AuditLatchParser.cs" />
+    <Compile Include="..\SocialCleanup\SupportedGameVersion.cs" Link="Linked\SupportedGameVersion.cs" />
+    <Compile Include="..\SocialCleanup\Safety\VersionGate.cs" Link="Linked\VersionGate.cs" />
   </ItemGroup>
 
   <ItemGroup>
