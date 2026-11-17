@@ -228,9 +228,13 @@ public sealed class FriendTableModel
         }
         else if (selected.Count > 0)
         {
+            // Rows that are gone, or are no longer selectable (e.g. turned into a pending request), drop out.
             var present = new HashSet<ulong>();
             foreach (var e in newSnapshot.Entries)
-                present.Add(e.ContentId);
+            {
+                if (IsSelectable(e))
+                    present.Add(e.ContentId);
+            }
             if (selected.RemoveWhere(id => !present.Contains(id)) > 0)
                 OnSelectionChanged();
             if (anchorContentId is { } a && !present.Contains(a))
@@ -405,6 +409,12 @@ public sealed class FriendTableModel
     public bool IsSelected(ulong contentId) => selected.Contains(contentId);
 
     /// <summary>
+    /// Rows that can be ticked for removal: accepted friends only (RequestState 1). Pending friend requests (2 = sent,
+    /// 3 = received) and unrecognised states cannot be selected; the game uses different actions for those.
+    /// </summary>
+    public static bool IsSelectable(FriendEntry e) => e.RequestState == 1;
+
+    /// <summary>
     /// Checkbox click on <paramref name="contentId"/>. Without shift: toggle it. With shift and an anchor that is in the
     /// current view: set every row between the anchor and the clicked row (inclusive, in CURRENT view order) to the
     /// clicked row's new state. The clicked row becomes the new anchor. Returns false if ignored (locked / unknown row).
@@ -419,13 +429,19 @@ public sealed class FriendTableModel
             return false;
 
         var newState = !selected.Contains(contentId);
+        if (newState && !IsSelectable(view[clicked]))
+            return false;
         var changed = false;
         var anchor = shift && anchorContentId is { } a ? IndexInView(a) : -1;
         if (anchor >= 0)
         {
+            // Range: unselectable rows (pending requests) are skipped when selecting.
             var (lo, hi) = anchor <= clicked ? (anchor, clicked) : (clicked, anchor);
             for (var i = lo; i <= hi; i++)
-                changed |= SetSelected(view[i].ContentId, newState);
+            {
+                if (!newState || IsSelectable(view[i]))
+                    changed |= SetSelected(view[i].ContentId, newState);
+            }
         }
         else
         {
@@ -445,7 +461,11 @@ public sealed class FriendTableModel
         EnsureView();
         var changed = false;
         foreach (var e in view)
-            changed |= selected.Add(e.ContentId);
+        {
+            if (IsSelectable(e))
+                changed |= selected.Add(e.ContentId);
+        }
+
         if (changed)
             OnSelectionChanged();
     }
@@ -471,7 +491,7 @@ public sealed class FriendTableModel
             return;
         foreach (var e in view)
         {
-            if (!selected.Remove(e.ContentId))
+            if (!selected.Remove(e.ContentId) && IsSelectable(e))
                 selected.Add(e.ContentId);
         }
 

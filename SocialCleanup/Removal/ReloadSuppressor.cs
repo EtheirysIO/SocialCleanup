@@ -99,7 +99,7 @@ public sealed unsafe class ReloadSuppressor : IReloadSuppressor, IDisposable
         this.data = data;
         this.reader = reader;
         this.log = log;
-        core = new ReloadSuppressionCore(m => log.Information($"[Fast] {Stamp} {m}"), m => log.Warning($"[Fast] {Stamp} {m}"));
+        core = new ReloadSuppressionCore(m => log.Telemetry($"[Fast] {Stamp} {m}"), m => log.Warning($"[Fast] {Stamp} {m}"));
         moduleBase = scanner.Module.BaseAddress;
 
         replyResolveFailure = SafeResolve(scanner, ReplyHandlerSignature, "Reply handler", out replyAddress);
@@ -169,13 +169,13 @@ public sealed unsafe class ReloadSuppressor : IReloadSuppressor, IDisposable
     public void SetFastBatchActive(bool active)
     {
         if (core.SetFastBatchActive(active))
-            log.Information($"[Fast] {Stamp} Fast batch {(active ? "ACTIVE: suppression possible for the armed target only" : "inactive: nothing is suppressed")}.");
+            log.Telemetry($"[Fast] {Stamp} Fast batch {(active ? "ACTIVE: suppression possible for the armed target only" : "inactive: nothing is suppressed")}.");
     }
 
     public void Arm(ulong targetContentId)
     {
         core.Arm(targetContentId);
-        log.Information($"[Fast] {Stamp} Armed {targetContentId:X16}.");
+        log.Telemetry($"[Fast] {Stamp} Armed {targetContentId:X16}.");
     }
 
     public void Disarm() => core.Disarm();
@@ -418,7 +418,7 @@ public sealed unsafe class ReloadSuppressor : IReloadSuppressor, IDisposable
             var proxy = framework.IsInFrameworkUpdateThread ? InfoProxyFriendList.Instance() : null;
             ProxyFlags? after = proxy != null ? ReadFlags(proxy) : null;
             var before = reader.LastEndRequestFlagsBefore;
-            log.Information($"[Fast] {Stamp} Snapshot gen {snap.Generation} ({snap.Source}) EntryCount={snap.NativeEntryCount} entries={snap.Entries.Count} " +
+            log.Telemetry($"[Fast] {Stamp} Snapshot gen {snap.Generation} ({snap.Source}) EntryCount={snap.NativeEntryCount} entries={snap.Entries.Count} " +
                             $"requestId={snap.CurrentRequestId} ours={snap.WasRequestedByPlugin} EndRequest bytes before {before?.ToString() ?? "n/a"} now {after?.ToString() ?? "unreadable"}");
             core.OnSnapshotCompleted(snap.Source == SnapshotSource.FullDownload, before, after);
         }

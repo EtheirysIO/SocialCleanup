@@ -43,7 +43,10 @@ public interface IGameSession
     /// <summary>Incremented on every logout event, so a logout + re-login between ticks is still seen.</summary>
     int LogoutCount { get; }
 
-    /// <summary>The in-game Friend List window (addon "FriendList") is open. A fast batch refuses to start while it is.</summary>
+    /// <summary>
+    /// The in-game Friend List window (addon "FriendList") is open (unknown counts as open). No batch starts while it is,
+    /// and a running batch pauses before its next send until it is closed.
+    /// </summary>
     bool IsFriendListWindowOpen { get; }
 }
 
@@ -85,6 +88,9 @@ public sealed record RemovalQueueSettings(TimeSpan ItemTimeout, TimeSpan Cooldow
 /// </summary>
 public class RemovalQueueCore : IRemovalQueue
 {
+    /// <summary>Activity text while a running batch is paused because the in-game Friend List window is open.</summary>
+    public const string FriendListWindowPauseText = "Paused — close the in-game Friend List window to continue";
+
     private static readonly TimeSpan TransientRefreshAfter = TimeSpan.FromSeconds(2);
 
     private readonly object gate = new();
@@ -96,6 +102,7 @@ public class RemovalQueueCore : IRemovalQueue
     private readonly Func<RemovalQueueSettings> settings;
     private readonly Func<string?>? externalBusy;
     private readonly Action<string>? log;
+    private readonly Action<string>? detailLog;
     private readonly Random random;
     private readonly IReloadSuppressor? suppressor;
 
@@ -121,6 +128,9 @@ public class RemovalQueueCore : IRemovalQueue
     private TimeSpan? transientSince;
     private TimeSpan lastTransientAt;
     private bool transientRefreshRequested;
+
+    // Paused (Running, between items) because the in-game Friend List window is open; null when not paused.
+    private TimeSpan? pausedSince;
 
     // A snapshot raised re-entrantly while TrySend was running; evaluated once the send parameters are known.
     private FriendListSnapshot? deferredSnapshot;
@@ -160,7 +170,8 @@ public class RemovalQueueCore : IRemovalQueue
         Func<string?>? externalBusy = null,
         Action<string>? log = null,
         Random? random = null,
-        IReloadSuppressor? suppressor = null)
+        IReloadSuppressor? suppressor = null,
+        Action<string>? detailLog = null)
     {
         this.reader = reader;
         this.remover = remover;
@@ -170,6 +181,7 @@ public class RemovalQueueCore : IRemovalQueue
         this.settings = settings;
         this.externalBusy = externalBusy;
         this.log = log;
+        this.detailLog = detailLog;
         this.random = random ?? new Random();
         this.suppressor = suppressor;
         reader.SnapshotCompleted += OnSnapshot;
@@ -380,6 +392,15 @@ public class RemovalQueueCore : IRemovalQueue
         {
             lock (gate)
                 return resumePending;
+        }
+    }
+
+    public bool IsPausedForFriendListWindow
+    {
+        get
+        {
+            lock (gate)
+                return pausedSince != null && state == RemovalQueueState.Running;
         }
     }
 
@@ -715,6 +736,34 @@ public class RemovalQueueCore : IRemovalQueue
             return;
         }
 
+        // ---- in-game Friend List window open: pause (not halt) before the next send. The in-flight item (handled
+        // above) settles normally. Paused time does not count against the ready-wait or transient-refusal budgets.
+        if (session.IsFriendListWindowOpen)
+        {
+            if (pausedSince == null)
+            {
+                pausedSince = now;
+                Log($"Paused before {items[next].Target}: the in-game Friend List window is open. Nothing is sent until it is closed.");
+                MarkChanged();
+            }
+
+            SetActivity(FriendListWindowPauseText);
+            return;
+        }
+
+        if (pausedSince is { } ps)
+        {
+            var paused = now - ps;
+            pausedSince = null;
+            if (waitingSince is { } ws)
+                waitingSince = ws + paused;
+            if (transientSince is { } ts0)
+                transientSince = ts0 + paused;
+            activity = null;
+            Log($"Friend List window closed after {paused.TotalSeconds:0.0}s; continuing once the friend list is usable.");
+            MarkChanged();
+        }
+
         if (now < nextActionAt)
         {
             activity = $"Cooldown ({(nextActionAt - now).TotalSeconds:0.0}s)";
@@ -794,7 +843,7 @@ public class RemovalQueueCore : IRemovalQueue
             return;
         transientRefreshRequested = reader.RequestRefresh();
         if (transientRefreshRequested)
-            Log("Transient refusal and no newer snapshot: friend-list refresh requested.");
+            LogDetail("Transient refusal and no newer snapshot: friend-list refresh requested.");
     }
 
     private void SendLocked(int index, FriendListSnapshot snapAtSend, TimeSpan now, RemovalQueueSettings s)
@@ -839,7 +888,7 @@ public class RemovalQueueCore : IRemovalQueue
             return;
         }
 
-        Log($"TrySend({it.Target}, dryRun={dry}) -> {outcome.Result} (mayHaveReachedServer={outcome.MayHaveReachedServer}, transient={outcome.Transient}): {outcome.Detail}");
+        LogDetail($"TrySend({it.Target}, dryRun={dry}) -> {outcome.Result} (mayHaveReachedServer={outcome.MayHaveReachedServer}, transient={outcome.Transient}): {outcome.Detail}");
 
         if (dry && outcome.Result == RemovalSendResult.DryRunResolved && !outcome.MayHaveReachedServer)
         {
@@ -881,7 +930,7 @@ public class RemovalQueueCore : IRemovalQueue
             if (deferredSnapshot is { } ds)
             {
                 deferredSnapshot = null;
-                Log($"Evaluating snapshot gen {ds.Generation} that arrived while TrySend was running.");
+                LogDetail($"Evaluating snapshot gen {ds.Generation} that arrived while TrySend was running.");
                 OnSnapshotLocked(ds);
             }
 
@@ -923,7 +972,7 @@ public class RemovalQueueCore : IRemovalQueue
             lastTransientAt = now;
             requiredGeneration = Math.Max(requiredGeneration, snapAtSend.Generation + 1);
             activity = $"Waiting for the friend list to settle before sending {it.Target.DisplayName}";
-            Log($"Transient refusal for {it.Target}; waiting for a snapshot newer than gen {snapAtSend.Generation}.");
+            LogDetail($"Transient refusal for {it.Target}; waiting for a snapshot newer than gen {snapAtSend.Generation}.");
             MarkChanged();
             return;
         }
@@ -973,7 +1022,7 @@ public class RemovalQueueCore : IRemovalQueue
 
     private void LogSend(int index, ItemState it, SendDiagnostics d, bool fast)
     {
-        Log($"SEND #{index + 1}/{items.Count} {it.Target} mode={(fast ? "FAST" : "standard")} ret={d.NativeReturn?.ToString() ?? "?"} index={d.RawIndex} " +
+        LogDetail($"SEND #{index + 1}/{items.Count} {it.Target} mode={(fast ? "FAST" : "standard")} ret={d.NativeReturn?.ToString() ?? "?"} index={d.RawIndex} " +
             $"EntryCount {d.EntryCountBefore}->{d.EntryCountAfter?.ToString() ?? "?"} CurrentRequestId {d.CurrentRequestIdBefore}->{d.CurrentRequestIdAfter?.ToString() ?? "?"} " +
             $"NextRequestId {d.NextRequestIdBefore}->{d.NextRequestIdAfter?.ToString() ?? "?"} gen={d.SnapshotGeneration} proxy[{DescribeProxySafe()}]");
     }
@@ -984,29 +1033,29 @@ public class RemovalQueueCore : IRemovalQueue
             return;
 
         var inFlight = InFlightLocked() ? items[current] : null;
-        Log($"REPLY {r} | in flight: {(inFlight == null ? "none" : inFlight.Target.ToString())}");
+        LogDetail($"REPLY {r} | in flight: {(inFlight == null ? "none" : inFlight.Target.ToString())}");
         if (state != RemovalQueueState.Running || inFlight == null)
         {
-            Log("Reply ignored: no item in flight.");
+            LogDetail("Reply ignored: no item in flight.");
             return;
         }
 
         var it = inFlight;
         if (r.ContentId != it.Target.ContentId)
         {
-            Log($"Reply ignored: it is for {r.ContentId:X16}, not the in-flight target {it.Target.ContentId:X16}.");
+            LogDetail($"Reply ignored: it is for {r.ContentId:X16}, not the in-flight target {it.Target.ContentId:X16}.");
             return;
         }
 
         if (it.Status != RemovalItemStatus.AwaitingRefresh || it.SentAt == null)
         {
-            Log($"Reply ignored: the in-flight item is {it.Status}, not awaiting a result.");
+            LogDetail($"Reply ignored: the in-flight item is {it.Status}, not awaiting a result.");
             return;
         }
 
         if (it.Reply != null)
         {
-            Log("Duplicate reply for the in-flight target ignored.");
+            LogDetail("Duplicate reply for the in-flight target ignored.");
             return;
         }
 
@@ -1085,7 +1134,7 @@ public class RemovalQueueCore : IRemovalQueue
         }
 
         var ev = SendClassifier.Evaluate(snap, it.Target.ContentId, batch.LocalContentId, it.GenerationAtSend, it.RequestIdAtSend, it.EntryCountBefore);
-        Log($"Snapshot gen {snap.Generation} (requestId {snap.CurrentRequestId}, native {snap.NativeEntryCount}, ours={snap.WasRequestedByPlugin}, {snap.Source}) for {it.Target}: {ev.Observation} -> {ev.Verdict}");
+        LogDetail($"Snapshot gen {snap.Generation} (requestId {snap.CurrentRequestId}, native {snap.NativeEntryCount}, ours={snap.WasRequestedByPlugin}, {snap.Source}) for {it.Target}: {ev.Observation} -> {ev.Verdict}");
 
         if (ev.Verdict == SnapshotVerdict.Ignore)
             return;
@@ -1223,7 +1272,7 @@ public class RemovalQueueCore : IRemovalQueue
             if (UnexpectedMissingLocked(it, snap) is { } unexpected)
                 problems.Add($"other friends are missing too: {unexpected}");
 
-            Log($"LOCAL snapshot gen {snap.Generation} (requestId {snap.CurrentRequestId}, native {snap.NativeEntryCount}) for {it.Target}: " +
+            LogDetail($"LOCAL snapshot gen {snap.Generation} (requestId {snap.CurrentRequestId}, native {snap.NativeEntryCount}) for {it.Target}: " +
                 (problems.Count == 0 ? "OK" : string.Join("; ", problems)));
             if (problems.Count == 0)
             {
@@ -1239,7 +1288,7 @@ public class RemovalQueueCore : IRemovalQueue
 
         // A full download completed while this fast item was in flight (reload not suppressed, or a game-initiated one).
         var ev = SendClassifier.Evaluate(snap, it.Target.ContentId, batch!.LocalContentId, it.GenerationAtSend, it.RequestIdAtSend, it.EntryCountBefore);
-        Log($"FULL snapshot gen {snap.Generation} (requestId {snap.CurrentRequestId}, native {snap.NativeEntryCount}) during fast item {it.Target}: {ev.Observation} -> {ev.Verdict}");
+        LogDetail($"FULL snapshot gen {snap.Generation} (requestId {snap.CurrentRequestId}, native {snap.NativeEntryCount}) during fast item {it.Target}: {ev.Observation} -> {ev.Verdict}");
         switch (ev.Verdict)
         {
             case SnapshotVerdict.Ignore:
@@ -1345,7 +1394,7 @@ public class RemovalQueueCore : IRemovalQueue
         {
             resumeRefreshRequested = reader.RequestRefresh();
             if (resumeRefreshRequested)
-                Log("Resume: friend-list refresh requested.");
+                LogDetail("Resume: friend-list refresh requested.");
         }
     }
 
@@ -1476,6 +1525,7 @@ public class RemovalQueueCore : IRemovalQueue
         haltReason = null;
         originalHaltReason = null;
         waitingSince = null;
+        pausedSince = null;
         ClearTransientLocked();
         nextActionAt = now + (batch.FastMode ? FastCooldownWithJitter(s) : CooldownWithJitter(s));
         if (batch.FastMode)
@@ -1701,6 +1751,7 @@ public class RemovalQueueCore : IRemovalQueue
         state = RemovalQueueState.Halted;
         haltReason = reason;
         originalHaltReason = reason;
+        pausedSince = null;
         haltGeneration = reader.Generation;
         resumePending = false;
         current = -1;
@@ -1716,6 +1767,7 @@ public class RemovalQueueCore : IRemovalQueue
     {
         state = RemovalQueueState.Completed;
         current = -1;
+        pausedSince = null;
         activity = null;
         Log("Batch completed.");
         WriteBatchEndLocked("Completed");
@@ -1743,6 +1795,7 @@ public class RemovalQueueCore : IRemovalQueue
 
         state = RemovalQueueState.Cancelled;
         haltReason = reason;
+        pausedSince = null;
         resumePending = false;
         current = -1;
         deferredSnapshot = null;
@@ -1858,6 +1911,10 @@ public class RemovalQueueCore : IRemovalQueue
         if (b.LocalContentId != session.LocalContentId)
             return $"The batch was confirmed for character {b.LocalContentId:X16}, but {session.LocalContentId:X16} is logged in.";
 
+        // Every batch (standard, fast, dry run): the in-game Friend List window drives its own reloads.
+        if (session.IsFriendListWindowOpen)
+            return "Close the in-game Friend List window first; nothing is started while it is open.";
+
         if (b.FastMode)
         {
             if (b.DryRun)
@@ -1866,8 +1923,6 @@ public class RemovalQueueCore : IRemovalQueue
                 return "Fast mode is not wired in this build.";
             if (suppressor.Availability is { IsAvailable: false } fa)
                 return $"Fast mode is unavailable: {fa.Reason}";
-            if (session.IsFriendListWindowOpen)
-                return "Close the in-game Friend List window before starting a fast batch (its data would go stale while reloads are suppressed).";
         }
 
         var avail = remover.Availability;
@@ -2140,6 +2195,7 @@ public class RemovalQueueCore : IRemovalQueue
         current = -1;
         requiredGeneration = 0;
         waitingSince = null;
+        pausedSince = null;
         cancelRequested = false;
         resumePending = false;
         resumeRefreshRequested = false;
@@ -2188,6 +2244,19 @@ public class RemovalQueueCore : IRemovalQueue
         try
         {
             log?.Invoke($"{clock.UtcNow:HH:mm:ss.fff}Z {message}");
+        }
+        catch
+        {
+            // Logging must never break the state machine.
+        }
+    }
+
+    /// <summary>Per-send / per-reply / per-snapshot telemetry: the detail log when one was given, else the normal log.</summary>
+    private void LogDetail(string message)
+    {
+        try
+        {
+            (detailLog ?? log)?.Invoke($"{clock.UtcNow:HH:mm:ss.fff}Z {message}");
         }
         catch
         {

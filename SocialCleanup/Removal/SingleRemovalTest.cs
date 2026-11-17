@@ -647,7 +647,7 @@ public sealed unsafe class SingleRemovalTest : IDisposable
                     parts.Add(p);
             }
 
-            log.Information($"[SingleTest] LogMessage {RemovedLogMessageId} template: \"{macro}\" -> match fragments [{string.Join(" | ", parts)}] (best effort).");
+            log.Telemetry($"[SingleTest] LogMessage {RemovedLogMessageId} template: \"{macro}\" -> match fragments [{string.Join(" | ", parts)}] (best effort).");
             return parts.ToArray();
         }
         catch (Exception ex)
@@ -692,7 +692,7 @@ public sealed unsafe class SingleRemovalTest : IDisposable
     private void Line(string message)
     {
         var stamped = $"{DateTime.UtcNow:HH:mm:ss.fff}Z {message}";
-        log.Information($"[SingleTest] {message}");
+        log.Telemetry($"[SingleTest] {message}");
         lock (gate)
         {
             lines.Add(stamped);

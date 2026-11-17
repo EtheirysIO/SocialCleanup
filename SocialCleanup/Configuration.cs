@@ -6,7 +6,20 @@ namespace SocialCleanup;
 [Serializable]
 public sealed class Configuration : IPluginConfiguration
 {
-    public int Version { get; set; } = 1;
+    /// <summary>Current config schema. 2: dry run no longer the default (see <see cref="Migrate"/>).</summary>
+    public const int CurrentVersion = 2;
+
+    // Safe ranges (the queue clamps to the same ranges again; the settings UI clamps on edit).
+    public const int ItemTimeoutMinSeconds = 10;
+    public const int ItemTimeoutMaxSeconds = 300;
+    public const int CooldownMinMs = 0;
+    public const int FastCooldownMinMs = 200;
+    public const int CooldownMaxMs = 60000;
+    public const int FastReplyTimeoutMinSeconds = 2;
+    public const int FastReplyTimeoutMaxSeconds = 60;
+
+    /// <summary>New installs start at <see cref="CurrentVersion"/>; a saved file keeps its own value until migrated.</summary>
+    public int Version { get; set; } = CurrentVersion;
 
     /// <summary>
     /// How long a refresh we started may stay in Loading before the reader gives up and goes Invalid.
@@ -17,8 +30,17 @@ public sealed class Configuration : IPluginConfiguration
     /// <summary>Emit the debug-level RequestData / EndRequest telemetry lines.</summary>
     public bool FriendListTelemetry { get; set; } = true;
 
-    /// <summary>Initial state of the "Dry run" checkbox in the removal confirmation dialog. Keep ON unless you mean it.</summary>
-    public bool DefaultDryRun { get; set; } = true;
+    /// <summary>
+    /// Developer tools only: initial state of the "Dry run" option in the confirmation dialog (remembered). Default OFF.
+    /// Ignored while <see cref="ShowDeveloperTools"/> is off (the dialog then never dry-runs).
+    /// </summary>
+    public bool DefaultDryRun { get; set; }
+
+    /// <summary>Show the developer section (single-friend test, dry runs, raw diagnostics, audit file). Default OFF.</summary>
+    public bool ShowDeveloperTools { get; set; }
+
+    /// <summary>Log per-send / per-reply telemetry at Information instead of Debug.</summary>
+    public bool VerboseLogging { get; set; }
 
     /// <summary>
     /// Single-friend removal test: how long to wait after a real send for a newer friend-list snapshot before the
@@ -52,4 +74,20 @@ public sealed class Configuration : IPluginConfiguration
 
     /// <summary>Fast mode: random 0..this many ms added to every fast cooldown (clamped 0..10000).</summary>
     public int FastCooldownJitterMs { get; set; } = 250;
+
+    /// <summary>
+    /// One-time upgrade of a saved configuration. Version 1 → 2: a saved <c>DefaultDryRun = true</c> (the old default)
+    /// becomes false once; after that the user's choice is kept. Returns true when something changed (save it).
+    /// </summary>
+    public bool Migrate()
+    {
+        if (Version >= CurrentVersion)
+            return false;
+
+        if (Version < 2)
+            DefaultDryRun = false;
+
+        Version = CurrentVersion;
+        return true;
+    }
 }

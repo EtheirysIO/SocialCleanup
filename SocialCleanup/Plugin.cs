@@ -35,6 +35,7 @@ public sealed class Plugin : IDalamudPlugin
 
     // Nullable so a partially failed constructor can dispose exactly what was built.
     private MainWindow? mainWindow;
+    private SettingsWindow? settingsWindow;
     private VersionBlockedWindow? blockedWindow;
     private DirectFriendRemover? remover;
     private ReloadSuppressor? suppressor;
@@ -69,6 +70,13 @@ public sealed class Plugin : IDalamudPlugin
 
             var config = PluginInterface.GetPluginConfig() as Configuration ?? new Configuration();
             Configuration = config;
+            if (config.Migrate())
+            {
+                Log.Information($"[Config] Migrated to version {Configuration.CurrentVersion} (dry run is no longer the default).");
+                SaveConfiguration();
+            }
+
+            TelemetryLog.Verbose = config.VerboseLogging;
 
             friendList = new FriendListReader(Gate, Framework, ClientState, PlayerState, GameInterop, DataManager, Log, config);
             FriendList = friendList;
@@ -100,6 +108,7 @@ public sealed class Plugin : IDalamudPlugin
             singleTest.ExternalBusy = () =>
                 RemovalGate.IsBatchActive(q.State) ? $"A removal batch is {q.State}."
                 : q.FinalVerification is { IsInProgress: true } ? "A removal batch's final reload / verification is in progress."
+                : q.IsFriendListWindowOpen ? "Close the in-game Friend List window first."
                 : null;
 
             // Game-initiated downloads (e.g. the re-download after a removal reply) must not be timed out by the reader
@@ -121,9 +130,14 @@ public sealed class Plugin : IDalamudPlugin
             mainWindow = new MainWindow(friendList, config, queue: queue, remover: remover, saveConfig: SaveConfiguration);
             mainWindow.AttachSingleTest(singleTest, remover);
             mainWindow.FriendListWindowOpen = () => q.IsFriendListWindowOpen;
+            mainWindow.FriendListWindowDetail = () => q.FriendListWindowDetail;
             mainWindow.AuditPathHint = auditLog.FilePath;
             mainWindow.GameVersionGate = Gate;
             windowSystem.AddWindow(mainWindow);
+
+            settingsWindow = new SettingsWindow(config, SaveConfiguration);
+            mainWindow.OpenSettings = ToggleConfigUi;
+            windowSystem.AddWindow(settingsWindow);
 
             RegisterCommandAndUi();
         }
@@ -163,6 +177,8 @@ public sealed class Plugin : IDalamudPlugin
             blockedWindow?.Toggle();
     }
 
+    public void ToggleConfigUi() => settingsWindow?.Toggle();
+
     private void OnCommand(string command, string args) => ToggleMainUi();
 
     private void RegisterCommandAndUi()
@@ -175,6 +191,8 @@ public sealed class Plugin : IDalamudPlugin
 
         PluginInterface.UiBuilder.Draw += windowSystem.Draw;
         PluginInterface.UiBuilder.OpenMainUi += ToggleMainUi;
+        if (settingsWindow != null)
+            PluginInterface.UiBuilder.OpenConfigUi += ToggleConfigUi;
         uiHooked = true;
     }
 
@@ -189,6 +207,7 @@ public sealed class Plugin : IDalamudPlugin
         {
             Try(() => PluginInterface.UiBuilder.Draw -= windowSystem.Draw);
             Try(() => PluginInterface.UiBuilder.OpenMainUi -= ToggleMainUi);
+            Try(() => PluginInterface.UiBuilder.OpenConfigUi -= ToggleConfigUi);
         }
 
         if (commandAdded)

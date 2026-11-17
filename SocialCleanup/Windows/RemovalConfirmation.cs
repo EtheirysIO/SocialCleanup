@@ -152,7 +152,8 @@ public static class RemovalGate
         bool hasSnapshot,
         int selectedCount,
         out string? reason,
-        bool singleTestInFlight = false)
+        bool singleTestInFlight = false,
+        bool friendListWindowOpen = false)
     {
         reason = null;
         if (!hasQueue)
@@ -160,17 +161,19 @@ public static class RemovalGate
         else if (removerAvailability is not { } avail)
             reason = "No friend remover was supplied; availability unknown.";
         else if (!avail.IsAvailable)
-            reason = $"Remover unavailable: {avail.Reason}";
+            reason = $"Removal is unavailable: {avail.Reason}";
+        else if (friendListWindowOpen)
+            reason = "Close the in-game Friend List window first.";
         else if (IsBatchActive(queueState))
-            reason = $"A removal batch is {queueState}.";
+            reason = queueState == RemovalQueueState.Halted ? "A removal batch is halted; resume or cancel it first." : "A removal batch is running.";
         else if (singleTestInFlight)
             reason = "A single-friend removal test is in flight.";
         else if (!hookActive)
-            reason = "Friend-list completion hook is not active.";
+            reason = "The friend list cannot be read (completion hook not active).";
         else if (!hasSnapshot)
-            reason = "No friend-list snapshot loaded.";
+            reason = "The friend list is not loaded yet.";
         else if (readerState != FriendListState.Ready)
-            reason = $"Friend list is {readerState}; refresh until it is Ready.";
+            reason = readerState == FriendListState.Loading ? "Waiting for the friend list to finish loading." : $"The friend list is {readerState}; press Refresh.";
         else if (selectedCount == 0)
             reason = "Nothing selected.";
 

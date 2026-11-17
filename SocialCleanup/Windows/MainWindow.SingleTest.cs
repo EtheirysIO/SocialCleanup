@@ -9,8 +9,8 @@ using SocialCleanup.Removal;
 namespace SocialCleanup.Windows;
 
 /// <summary>
-/// Developer-only "Single-friend removal test" section: one dry run or one real removal of exactly one selected
-/// friend, with live telemetry. The multi-select queue is not involved.
+/// Developer-only "Single-friend removal test" section (inside Developer tools): one dry run or one real removal of
+/// exactly one selected friend, with live telemetry. The multi-select queue is not involved.
 /// </summary>
 public sealed partial class MainWindow
 {
@@ -40,16 +40,12 @@ public sealed partial class MainWindow
         directRemover = remover;
     }
 
-    private void DrawSingleTestSection(FriendListState state, FriendListSnapshot? snap, bool batchActive)
+    private void DrawSingleTestSection(FriendListState state, FriendListSnapshot? snap, bool batchActive, bool windowOpen)
     {
         // Collapsed by default (no DefaultOpen flag).
-        bool expanded;
-        using (ImRaii.PushColor(ImGuiCol.Header, new Vector4(0.45f, 0.12f, 0.12f, 0.8f)))
-            expanded = ImGui.CollapsingHeader("Single-friend removal test (developer)###singleTestHeader");
-        if (!expanded)
+        using var node = ImRaii.TreeNode("Single-friend removal test###singleTestHeader");
+        if (!node.Success)
             return;
-
-        using var indent = ImRaii.PushIndent();
 
         if (singleTest == null || directRemover == null)
         {
@@ -70,24 +66,10 @@ public sealed partial class MainWindow
         if (rem.StartupBlock is { } sb)
         {
             ImGui.PushTextWrapPos(0);
-            ImGui.TextColored(ColorError, $"Sends BLOCKED since startup: {sb.Reason}");
-            ImGui.TextColored(ColorWarn,
-                "Open the in-game friend list and check whether that removal happened before clearing this. " +
-                (sb.Target is { } bt ? $"Target: {bt.DisplayName} @ {bt.HomeWorldName}, ContentId {bt.ContentId:X16}." : string.Empty));
+            ImGui.TextColored(ColorError, $"Sends BLOCKED since startup (clear it with the banner at the top): {sb.Reason}" +
+                                          (sb.Target is { } bt ? $" Target ContentId {bt.ContentId:X16}." : string.Empty));
             ImGui.PopTextWrapPos();
-            using (ImRaii.Disabled(test.IsInFlight || batchActive))
-            {
-                if (ImGui.Button("I have checked the friend list — clear###singleClearStartupBlock"))
-                {
-                    startupBlockClearError = rem.ClearStartupBlock(out var clearErr)
-                        ? null
-                        : $"Block cleared, but the USERCLEARED audit row could not be written ({clearErr}); it will block again after a reload.";
-                }
-            }
         }
-
-        if (startupBlockClearError != null)
-            ImGui.TextColored(ColorWarn, startupBlockClearError);
 
         if (rem.Unresolved is { } u)
         {
@@ -109,7 +91,9 @@ public sealed partial class MainWindow
         var entry = GetSingleSelection(snap);
         var inFlight = test.IsInFlight;
         string? blocked = null;
-        if (batchActive)
+        if (windowOpen)
+            blocked = "Close the in-game Friend List window first.";
+        else if (batchActive)
             blocked = "Disabled while a removal batch is running or halted.";
         else if (model.SelectedCount != 1)
             blocked = $"Select exactly one friend ({model.SelectedCount} selected).";
@@ -214,14 +198,9 @@ public sealed partial class MainWindow
                     ImGui.TextUnformatted(l);
             }
         }
-
-        ImGui.TextDisabled($"Audit CSV: {AuditPathHint}");
     }
 
-    /// <summary>Set by the plugin so the section can show where the audit file is.</summary>
-    internal string AuditPathHint { get; set; } = "(unknown)";
-
-    private void DrawSingleTestConfirmModal()
+    private void DrawSingleTestConfirmModal(bool windowOpen)
     {
         if (openSingleConfirmRequested)
         {
@@ -267,7 +246,9 @@ public sealed partial class MainWindow
         var batchActive = queue != null && RemovalGate.IsBatchActive(queue.State);
         if (batchActive)
             ImGui.TextColored(ColorWarn, "A removal batch is active; cancel it first.");
-        var canGo = singleConfirmAck && !stale && !batchActive && !singleTest.IsInFlight && IneligibleReason(e) == null
+        if (windowOpen)
+            ImGui.TextColored(ColorError, "Close the in-game Friend List window first.");
+        var canGo = singleConfirmAck && !stale && !batchActive && !windowOpen && !singleTest.IsInFlight && IneligibleReason(e) == null
                     && directRemover is { HasUnresolvedSend: false };
         using (ImRaii.Disabled(!canGo))
         using (ImRaii.PushColor(ImGuiCol.Button, new Vector4(0.6f, 0.1f, 0.1f, 1f)))

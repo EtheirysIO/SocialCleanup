@@ -28,6 +28,8 @@
     <Compile Include="..\SocialCleanup\Removal\AuditLatchParser.cs" Link="Linked\AuditLatchParser.cs" />
     <Compile Include="..\SocialCleanup\SupportedGameVersion.cs" Link="Linked\SupportedGameVersion.cs" />
     <Compile Include="..\SocialCleanup\Safety\VersionGate.cs" Link="Linked\VersionGate.cs" />
+    <Compile Include="..\SocialCleanup\Windows\FriendTableModel.cs" Link="Linked\FriendTableModel.cs" />
+    <Compile Include="..\SocialCleanup\Windows\RemovalConfirmation.cs" Link="Linked\RemovalConfirmation.cs" />
   </ItemGroup>
 
   <ItemGroup>

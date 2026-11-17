@@ -438,7 +438,7 @@ public sealed unsafe class DirectFriendRemover : IFriendRemover, IDisposable
                 $"index={idx} EntryCount={count} ExtraFlags=0x{flags:X8} gen={snap.Generation} CurrentRequestId={curReq} (nothing sent)",
                 MayHaveReachedServer: false);
             SafeAudit(localId, target, true, AuditPhase.DryRun, dry);
-            log.Information($"[Remover] DRY RUN {target}: {dry.Detail}");
+            log.Telemetry($"[Remover] DRY RUN {target}: {dry.Detail}");
             return dry;
         }
 
@@ -491,7 +491,7 @@ public sealed unsafe class DirectFriendRemover : IFriendRemover, IDisposable
             : new RemovalSendOutcome(RemovalSendResult.Failed, $"Native RemoveFriend returned 0 (expected: nothing queued): {after}", MayHaveReachedServer: true);
 
         SafeAudit(localId, target, false, AuditPhase.Outcome, outcome);
-        log.Information($"[Remover] SENT {target}: {outcome.Result} {outcome.Detail}");
+        log.Telemetry($"[Remover] SENT {target}: {outcome.Result} {outcome.Detail}");
         return outcome;
 
         // transient: nothing was sent and the cause is a list download / reshuffle in progress (the queue waits and
@@ -499,7 +499,7 @@ public sealed unsafe class DirectFriendRemover : IFriendRemover, IDisposable
         RemovalSendOutcome Refuse(RemovalSendResult result, string detail, bool auditRow = true, bool transient = false)
         {
             var o = new RemovalSendOutcome(result, detail, MayHaveReachedServer: false) { Transient = transient };
-            log.Information($"[Remover] REFUSED{(dryRun ? " (dry run)" : string.Empty)}{(transient ? " (transient)" : string.Empty)} {target}: {result} — {detail}");
+            log.Telemetry($"[Remover] REFUSED{(dryRun ? " (dry run)" : string.Empty)}{(transient ? " (transient)" : string.Empty)} {target}: {result} — {detail}");
             if (auditRow)
                 SafeAudit(ctx.LocalId, target, dryRun, AuditPhase.Refused, o);
             return o;
@@ -523,7 +523,7 @@ public sealed unsafe class DirectFriendRemover : IFriendRemover, IDisposable
         var fn = InfoProxyCommonList.Addresses.GetEntry.Value;
         if (fn == 0)
         {
-            log.Information("[Remover] GetEntry cross-check skipped: FFXIVClientStructs did not resolve InfoProxyCommonList.GetEntry.");
+            log.Telemetry("[Remover] GetEntry cross-check skipped: FFXIVClientStructs did not resolve InfoProxyCommonList.GetEntry.");
             return null;
         }
 
@@ -571,16 +571,16 @@ public sealed unsafe class DirectFriendRemover : IFriendRemover, IDisposable
                 case SendObservation.TargetAbsent:
                 case SendObservation.PresentInPostSendDownload:
                     unresolved = null;
-                    log.Information($"[Remover] Latch released ({obs}, {snap.Source}) for {u.Target}: {ids}.");
+                    log.Telemetry($"[Remover] Latch released ({obs}, {snap.Source}) for {u.Target}: {ids}.");
                     Defer(u.LocalContentId, u.Target, obs.ToString(), $"{ids}; source {snap.Source}");
                     break;
 
                 case SendObservation.PresentInPreSendData:
-                    log.Information($"[Remover] Latch KEPT for {u.Target}: target present in pre-send data ({ids}).");
+                    log.Telemetry($"[Remover] Latch KEPT for {u.Target}: target present in pre-send data ({ids}).");
                     break;
 
                 case SendObservation.OtherCharacter:
-                    log.Information($"[Remover] Latch KEPT for {u.Target}: snapshot belongs to {snap.LocalContentId:X16} ({ids}).");
+                    log.Telemetry($"[Remover] Latch KEPT for {u.Target}: snapshot belongs to {snap.LocalContentId:X16} ({ids}).");
                     break;
             }
         }

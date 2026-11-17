@@ -353,8 +353,9 @@ public sealed class FastModeTests
         r.Session.IsFriendListWindowOpen = true;
         Assert.False(r.Queue.TryStart(r.Batch(false, ids) with { FastMode = true }, out err));
         Assert.Contains("Friend List window", err);
+        r.Session.IsFriendListWindowOpen = false; // (the window refuses standard batches too: FriendListWindowGuardTests)
 
-        // A standard batch is not affected by any of it.
+        // A standard batch is not affected by the fast-mode refusals.
         Assert.True(r.Queue.TryStart(r.Batch(false, ids), out err), err);
         Assert.DoesNotContain(r.Audit.Phase(AuditPhase.BatchStart), b => b.Detail.Contains("fastMode=True"));
     }

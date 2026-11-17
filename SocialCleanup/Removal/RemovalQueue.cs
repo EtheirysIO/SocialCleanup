@@ -44,7 +44,7 @@ public sealed class RemovalQueue : RemovalQueueCore
         Func<string?>? externalBusy,
         IReloadSuppressor? suppressor)
         : base(reader, remover, audit, SystemQueueClock.Instance, session, () => SettingsFrom(config), externalBusy, m => log.Information($"[Queue] {m}"),
-            suppressor: suppressor)
+            suppressor: suppressor, detailLog: m => log.Telemetry($"[Queue] {m}"))
     {
         this.framework = framework;
         this.session = session;
@@ -62,8 +62,15 @@ public sealed class RemovalQueue : RemovalQueueCore
         FastCooldownJitterMax = TimeSpan.FromMilliseconds(c.FastCooldownJitterMs),
     };
 
-    /// <summary>The in-game Friend List window is open (sampled on the framework thread).</summary>
+    /// <summary>
+    /// The in-game Friend List window is open (sampled on the framework thread; unknown counts as open). Detection:
+    /// <c>IGameGui.GetAddonByName("FriendList")</c> (FFXIVClientStructs <c>AddonFriendList</c> is
+    /// <c>[Addon("FriendList")]</c>) exists and <c>IsVisible</c>.
+    /// </summary>
     public bool IsFriendListWindowOpen => session.IsFriendListWindowOpen;
+
+    /// <summary>Raw detection result for the developer section ("open (visible)", "closed (not loaded)", ...).</summary>
+    public string FriendListWindowDetail => session.FriendListWindowDetail;
 
     public override void Dispose()
     {
@@ -92,7 +99,8 @@ public sealed class RemovalQueue : RemovalQueueCore
         private readonly IGameGui gameGui;
         private volatile bool isLoggedIn;
         private volatile bool betweenAreas;
-        private volatile bool friendListOpen;
+        private volatile bool friendListOpen = true; // unknown until the first framework tick → treated as open
+        private volatile string friendListDetail = "unknown (not sampled yet) → treated as open";
         private long contentId;
         private int logoutCount;
 
@@ -115,6 +123,8 @@ public sealed class RemovalQueue : RemovalQueueCore
 
         public bool IsFriendListWindowOpen => friendListOpen;
 
+        public string FriendListWindowDetail => friendListDetail;
+
         /// <summary>Framework thread.</summary>
         public void Refresh()
         {
@@ -123,12 +133,28 @@ public sealed class RemovalQueue : RemovalQueueCore
             betweenAreas = condition[ConditionFlag.BetweenAreas] || condition[ConditionFlag.BetweenAreas51] || condition[ConditionFlag.LoggingOut];
             try
             {
+                // "FriendList" = FFXIVClientStructs AddonFriendList ([Addon("FriendList")]). Open = exists AND visible.
                 var addon = gameGui.GetAddonByName("FriendList");
-                friendListOpen = !addon.IsNull && addon.IsVisible;
+                if (addon.IsNull)
+                {
+                    friendListOpen = false;
+                    friendListDetail = "closed (addon \"FriendList\" not loaded)";
+                }
+                else if (addon.IsVisible)
+                {
+                    friendListOpen = true;
+                    friendListDetail = "OPEN (addon \"FriendList\" loaded and visible)";
+                }
+                else
+                {
+                    friendListOpen = false;
+                    friendListDetail = "closed (addon \"FriendList\" loaded but hidden)";
+                }
             }
-            catch
+            catch (Exception ex)
             {
-                friendListOpen = true; // unknown → treat as open (a fast batch then refuses to start)
+                friendListOpen = true; // unknown → treat as open (nothing starts, a running batch pauses)
+                friendListDetail = $"unknown ({ex.GetType().Name}: {ex.Message}) → treated as open";
             }
 
             Interlocked.Exchange(ref contentId, (long)id);

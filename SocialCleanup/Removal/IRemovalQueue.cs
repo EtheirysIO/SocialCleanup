@@ -169,6 +169,12 @@ public interface IRemovalQueue : IDisposable
     /// <summary>Resume was requested; waiting for a fresh post-halt snapshot to reconcile against.</summary>
     bool IsResumePending { get; }
 
+    /// <summary>
+    /// Running, but paused before the next send because the in-game Friend List window is open. Continues on its own
+    /// once the window is closed and the friend list is usable again. Not a halt.
+    /// </summary>
+    bool IsPausedForFriendListWindow { get; }
+
     /// <summary>The current batch runs in fast mode.</summary>
     bool IsFastMode { get; }
 
@@ -194,7 +200,8 @@ public interface IRemovalQueue : IDisposable
     IReadOnlyList<string> MissingOutsideBatch { get; }
 
     /// <summary>
-    /// Start a confirmed batch. Refused (false + <paramref name="error"/>) unless the queue is not Running/Halted, the
+    /// Start a confirmed batch. Refused (false + <paramref name="error"/>) while the in-game Friend List window is open
+    /// (any mode, dry runs included), and unless the queue is not Running/Halted, the
     /// remover is available with no latch or startup block, the reader is Ready on exactly the batch's generation, the
     /// batch's LocalContentId matches the logged-in character, ContentIds are non-zero and unique, every target is
     /// in the snapshot, and none is a pending friend request (RequestState 2/3).
