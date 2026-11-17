@@ -18,3 +18,14 @@ artifacts/
 *.nupkg
 *.snupkg
 latest.zip
+
+## Test results
+TestResults/
+*.trx
+
+## Local tool / agent state
+.claude/settings.local.json
+
+## Plugin runtime data (contains character names and content IDs; never commit)
+removal-audit.csv
+*.log

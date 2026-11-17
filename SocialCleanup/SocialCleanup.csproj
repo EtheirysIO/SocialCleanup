@@ -2,8 +2,16 @@
 <Project Sdk="Dalamud.NET.Sdk/15.0.0">
   <PropertyGroup>
     <Authors>phys1ks</Authors>
+    <!--
+      Plugin version (AssemblyVersion, and so the AssemblyVersion in the packaged manifest). Four components.
+      The release workflow refuses a tag that does not match this value: bump it here, commit, then tag vX.Y.Z.W.
+    -->
     <Version>0.0.1.0</Version>
-    <Description>Personal dev plugin: review and bulk-clean the friend list.</Description>
+    <Description>Review the friend list in a sortable, filterable table and remove selected friends through a queue.</Description>
+    <PackageLicenseExpression>AGPL-3.0-or-later</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/EtheirysIO/SocialCleanup</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/EtheirysIO/SocialCleanup</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
   </PropertyGroup>
 
   <PropertyGroup>

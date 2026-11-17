@@ -1,0 +1,55 @@
+name: Build
+
+on:
+  push:
+    branches: [master]
+    paths-ignore:
+      - 'repo.json'
+      - '**.md'
+      - 'LICENSE'
+  pull_request:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Set up Dalamud
+        uses: ./.github/actions/setup-dalamud
+
+      # --locked-mode: fail instead of silently re-resolving if packages.lock.json is out of date.
+      - name: Restore
+        run: dotnet restore SocialCleanup.sln --locked-mode
+
+      - name: Build (Release)
+        run: dotnet build SocialCleanup.sln -c Release -p:Platform=x64 --no-restore
+
+      - name: Test
+        run: dotnet test SocialCleanup.Tests/SocialCleanup.Tests.csproj -c Release --no-build
+
+      - name: Upload plugin package
+        uses: actions/upload-artifact@v7
+        with:
+          name: SocialCleanup-${{ github.sha }}
+          path: bin/Release/SocialCleanup/
+          if-no-files-found: error

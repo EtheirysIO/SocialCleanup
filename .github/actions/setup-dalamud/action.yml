@@ -1,0 +1,42 @@
+name: Set up Dalamud reference assemblies
+description: >
+  Downloads a pinned Dalamud distribution (goatcorp/dalamud-distrib), checks its SHA-256, extracts it and points
+  DALAMUD_HOME at it so Dalamud.NET.Sdk can resolve Dalamud.dll, FFXIVClientStructs.dll and the other references.
+
+# The pin is deliberate. FFXIVClientStructs struct layouts are compiled into the plugin, so a release must be built
+# against the same Dalamud build the plugin was verified with in game. The default below is Dalamud 15.0.4.0
+# (API 15), the release-channel latest.zip promoted in goatcorp/dalamud-distrib commit 38d5859b on 2026-11-10.
+# When the plugin is re-verified against a new game version / Dalamud build, update both values together
+# (see "Updating for a new game patch" in README.md).
+inputs:
+  url:
+    description: URL of the Dalamud distribution zip.
+    required: false
+    default: https://raw.githubusercontent.com/goatcorp/dalamud-distrib/38d5859b17b014bfdbfbbd5d60d9433333ce330b/latest.zip
+  sha256:
+    description: Expected SHA-256 of that zip.
+    required: false
+    default: e94d993bf91c8a43ce0959942602ebd18c831b788a133700150ceb928283129f
+
+runs:
+  using: composite
+  steps:
+    - name: Download and extract Dalamud
+      shell: pwsh
+      env:
+        DALAMUD_ZIP_URL: ${{ inputs.url }}
+        DALAMUD_ZIP_SHA256: ${{ inputs.sha256 }}
+      run: |
+        $ErrorActionPreference = 'Stop'
+        $zip = Join-Path $env:RUNNER_TEMP 'dalamud.zip'
+        $dir = Join-Path $env:RUNNER_TEMP 'dalamud'
+        Invoke-WebRequest -Uri $env:DALAMUD_ZIP_URL -OutFile $zip
+        $actual = (Get-FileHash -Path $zip -Algorithm SHA256).Hash.ToLowerInvariant()
+        if ($actual -ne $env:DALAMUD_ZIP_SHA256.ToLowerInvariant()) {
+          throw "Dalamud zip SHA-256 mismatch: expected $($env:DALAMUD_ZIP_SHA256), got $actual"
+        }
+        Expand-Archive -Path $zip -DestinationPath $dir -Force
+        if (-not (Test-Path (Join-Path $dir 'Dalamud.dll'))) { throw "Dalamud.dll not found in $dir" }
+        $version = (Get-Item (Join-Path $dir 'Dalamud.dll')).VersionInfo.FileVersion
+        Write-Host "Dalamud $version extracted to $dir"
+        "DALAMUD_HOME=$dir" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8

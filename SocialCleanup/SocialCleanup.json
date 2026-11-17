@@ -1,10 +1,11 @@
 {
   "Author": "phys1ks",
   "Name": "Social Cleanup",
-  "Punchline": "Review and bulk-clean your friend list.",
-  "Description": "Personal dev plugin. Loads the friend list into a table so it can be reviewed, and (later) queues friend removals one at a time. Use /socialcleanup to open the window.",
+  "Punchline": "Review your friend list and remove selected friends in bulk.",
+  "Description": "Loads your friend list into a sortable, filterable table (search, world, data center, status, group) and removes the friends you select through a queue, one at a time, instead of by hand. Standard mode waits for the game's own friend-list reload after each removal; optional fast mode skips it and reloads and checks the list once at the end. Anything unclear halts the queue until you resume it. Removals are permanent and do not ask for the in-game confirmation. The plugin only works on the exact game version it was verified against and disables itself after every game patch until it is updated. Use /socialcleanup to open the window.",
   "InternalName": "SocialCleanup",
   "ApplicableVersion": "any",
+  "RepoUrl": "https://github.com/EtheirysIO/SocialCleanup",
   "Tags": [
     "social",
     "friends",

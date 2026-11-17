@@ -1,0 +1,12 @@
+# Store text files with LF in the repository and let each checkout use its platform's line endings
+# (CRLF on Windows with core.autocrlf=true). Every file already in the index is LF, so this changes no content.
+* text=auto
+
+# Binary files: never convert.
+*.png binary
+*.jpg binary
+*.ico binary
+*.zip binary
+*.dll binary
+*.exe binary
+*.pdb binary
