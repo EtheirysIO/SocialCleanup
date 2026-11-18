@@ -61,13 +61,15 @@ button in the plugin installer) opens the settings.
 2. Under **Custom Plugin Repositories**, add this URL, tick the checkbox to enable it, and save:
 
    ```
-   https://raw.githubusercontent.com/EtheirysIO/SocialCleanup/master/repo.json
+   https://repo.etheirys.io/repo.json
    ```
 
 3. Open the plugin installer (`/xlplugins`), search for **Social Cleanup** and install it.
 
-The release workflow creates `repo.json` when it publishes the first tagged release. Until the first release has been
-published the URL above returns "404 Not Found" and Dalamud lists no plugin from it.
+This is the Etheirys plugin repository; releases of Social Cleanup are published to it by
+the release workflow. Social Cleanup appears in the installer only once its first release has been published there.
+The plugin's page is <https://repo.etheirys.io/plugin/socialcleanup>; the source code is on GitHub at
+<https://github.com/EtheirysIO/SocialCleanup>.
 
 ### Building from source (dev plugin)
 
@@ -192,7 +194,7 @@ self-check) refuse to run when something obviously moved, but they are not a sub
    [Releasing](#releasing)).
 5. Test in game: a dry run, the single-friend test, a small standard batch and a small fast batch (check that the fast
    mode self-check passes and the final check passes).
-6. Bump the plugin version and release.
+6. Add a `CHANGELOG.md` section, bump the plugin version and release (see [Releasing](#releasing)).
 
 ## Building and running the tests
 
@@ -217,13 +219,15 @@ package references, run `dotnet restore` locally and commit the updated lock fil
 
 ## Releasing
 
-Releases are built and published by GitHub Actions.
+Releases are built by GitHub Actions and published to the Etheirys plugin repository (`repo.etheirys.io`), which
+hosts the package and generates the Dalamud repository listing itself. Everything runs in one workflow,
+`.github/workflows/build.yml`:
 
-- `.github/workflows/build.yml` runs on pushes and pull requests to `master`: restore, Release build, tests, and
-  uploads the package as a build artifact.
-- `.github/workflows/release.yml` runs when a tag starting with `v` is pushed (or manually, for an existing tag). It
-  builds with the tag's version, runs the tests, creates the GitHub Release with `latest.zip` (and its SHA-256)
-  attached, regenerates `repo.json` from the packaged manifest and commits it to `master`.
+- On every push to `master` and every pull request it restores (`--locked-mode`), builds Release, runs the tests,
+  checks the contents of `latest.zip` and keeps it as a build artifact.
+- On a pushed tag `vX.Y.Z.W` it also publishes a GitHub Release and uploads the package to the **latest** (stable)
+  channel of repo.etheirys.io. A tag with a suffix, such as `vX.Y.Z.W-test1`, does the same as a GitHub pre-release
+  and uploads to the **testing** channel.
 
 CI downloads a pinned Dalamud distribution (`goatcorp/dalamud-distrib`, currently Dalamud 15.0.4.0 for API 15) and
 verifies its SHA-256 before building; see `.github/actions/setup-dalamud/action.yml`. Struct layouts from
@@ -232,24 +236,39 @@ tested with. To move the pin, take the commit of `goatcorp/dalamud-distrib` whos
 `https://raw.githubusercontent.com/goatcorp/dalamud-distrib/<commit>/latest.zip` as `url` and its SHA-256 as
 `sha256`.
 
+Publishing needs the repository secret `ETHEIRYS_CI_TOKEN` (Settings, Secrets and variables, Actions), the CI
+upload token for this plugin on repo.etheirys.io. Without it a release fails before anything is made public.
+
 To cut a release:
 
-1. Set `<Version>` in `SocialCleanup/SocialCleanup.csproj` to the new four-part version (for example `1.0.0.0`) and
-   commit it to `master`.
-2. Tag that commit with the same version and push the tag:
+1. Add a section for the new version to `CHANGELOG.md`, headed `## X.Y.Z.W` (for example `## 1.0.0.0`). It becomes
+   the GitHub Release notes and the changelog that Dalamud's plugin installer shows. A release without that section
+   fails.
+2. Set `<Version>` in `SocialCleanup/SocialCleanup.csproj` to the same four-part version and commit both to
+   `master`.
+3. Tag that commit and push the tag:
 
    ```
    git tag v1.0.0.0
    git push origin v1.0.0.0
    ```
 
-   `v1.0.0` is also accepted and means `1.0.0.0`. The workflow fails without publishing anything if the tag does not
-   match the csproj version or the tests fail.
-3. Watch the Release workflow in the Actions tab. When it succeeds, the GitHub Release exists and `repo.json` on
-   `master` points to its `latest.zip`; Dalamud picks up the update from the custom repository.
+   For the testing channel, tag with a suffix instead, for example `v1.0.0.0-test1` (the part before the `-` must
+   still equal the csproj version). The tag must have four numeric parts without leading zeros; the workflow fails
+   without publishing anything if the tag is malformed, does not match the csproj version, or the build or tests fail.
+4. Watch the Build workflow in the Actions tab. For a tag it builds and tests, then the `release` job:
+   1. takes the `## X.Y.Z.W` section of `CHANGELOG.md` as the release notes,
+   2. creates the GitHub Release as a draft with `latest.zip` and its SHA-256 attached,
+   3. uploads `latest.zip` and the notes to repo.etheirys.io (latest or testing channel),
+   4. publishes the draft (as a pre-release for a testing tag).
 
-To re-publish an existing tag (for example after a failed run), run the Release workflow manually from the Actions
-tab and enter the tag. It replaces the release assets and rewrites `repo.json` to point at that tag.
+   When it succeeds, Dalamud picks up the update from `https://repo.etheirys.io/repo.json`.
+
+If the run fails before the upload has succeeded, nothing is public (at most a draft GitHub Release exists): fix the
+cause and use "Re-run failed jobs" on that run; the draft is reused. If only the last step fails, the error says so:
+the update is already live on repo.etheirys.io, so do not re-run; publish the draft with
+`gh release edit vX.Y.Z.W --draft=false`. A tag whose GitHub Release is already published is never published again;
+bump the version and tag again instead. There is no manual "re-publish this tag" workflow.
 
 ## License
 

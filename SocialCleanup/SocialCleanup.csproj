@@ -4,12 +4,13 @@
     <Authors>phys1ks</Authors>
     <!--
       Plugin version (AssemblyVersion, and so the AssemblyVersion in the packaged manifest). Four components.
-      The release workflow refuses a tag that does not match this value: bump it here, commit, then tag vX.Y.Z.W.
+      The release workflow refuses a tag whose numeric part does not match this value: add a "## X.Y.Z.W" section
+      to CHANGELOG.md, bump it here, commit, then tag vX.Y.Z.W (or vX.Y.Z.W-test1 for the testing channel).
     -->
     <Version>0.0.1.0</Version>
     <Description>Review the friend list in a sortable, filterable table and remove selected friends through a queue.</Description>
     <PackageLicenseExpression>AGPL-3.0-or-later</PackageLicenseExpression>
-    <PackageProjectUrl>https://github.com/EtheirysIO/SocialCleanup</PackageProjectUrl>
+    <PackageProjectUrl>https://repo.etheirys.io/plugin/socialcleanup</PackageProjectUrl>
     <RepositoryUrl>https://github.com/EtheirysIO/SocialCleanup</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
   </PropertyGroup>
