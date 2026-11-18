@@ -1,5 +1,7 @@
 # Social Cleanup
 
+<img src="SocialCleanup/images/icon.png" alt="Social Cleanup" width="128" align="right" />
+
 A Dalamud plugin for Final Fantasy XIV that loads your friend list into a sortable, filterable table and removes the
 friends you select through a queue, instead of one at a time by hand.
 

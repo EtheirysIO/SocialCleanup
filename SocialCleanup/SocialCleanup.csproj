@@ -7,7 +7,7 @@
       The release workflow refuses a tag whose numeric part does not match this value: add a "## X.Y.Z.W" section
       to CHANGELOG.md, bump it here, commit, then tag vX.Y.Z.W (or vX.Y.Z.W-test1 for the testing channel).
     -->
-    <Version>0.0.1.0</Version>
+    <Version>0.0.1.1</Version>
     <Description>Review the friend list in a sortable, filterable table and remove selected friends through a queue.</Description>
     <PackageLicenseExpression>AGPL-3.0-or-later</PackageLicenseExpression>
     <PackageProjectUrl>https://repo.etheirys.io/plugin/socialcleanup</PackageProjectUrl>
@@ -24,4 +24,28 @@
     <ProduceReferenceAssembly>false</ProduceReferenceAssembly>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
   </PropertyGroup>
+
+  <!-- The plugin installer's icon: images\icon.png next to the dll (and in the release zip). -->
+  <ItemGroup>
+    <None Include="images\icon.png" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <!--
+    Put the icon back into latest.zip. DalamudPackager (HandleImages, on by default) leaves images\icon.png out of the
+    zip and writes it next to the zip, which suits the goatcorp repository but not an upload of latest.zip alone. Its
+    HandleImages="false" would keep it, but on Windows it names the entry "images\icon.png" with a backslash, which is
+    not a valid zip path elsewhere. So: unpack the packaged zip, add the icon, and zip it again (ZipDirectory writes
+    "images/icon.png").
+  -->
+  <Target Name="AddIconToPackage" AfterTargets="DefaultDalamudPackagerRelease" Condition="'$(Configuration)' == 'Release'">
+    <PropertyGroup>
+      <IconPackageZip>$(OutputPath)$(AssemblyName)\latest.zip</IconPackageZip>
+      <IconPackageStaging>$(IntermediateOutputPath)package\</IconPackageStaging>
+    </PropertyGroup>
+    <RemoveDir Directories="$(IconPackageStaging)" />
+    <Unzip SourceFiles="$(IconPackageZip)" DestinationFolder="$(IconPackageStaging)" />
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\images\icon.png" DestinationFolder="$(IconPackageStaging)images\" />
+    <ZipDirectory SourceDirectory="$(IconPackageStaging)" DestinationFile="$(IconPackageZip)" Overwrite="true" />
+    <RemoveDir Directories="$(IconPackageStaging)" />
+  </Target>
 </Project>

@@ -86,7 +86,8 @@ jobs:
           try {
             $entries = $archive.Entries.FullName
             Write-Host "latest.zip: $($entries -join ', ')"
-            foreach ($f in 'SocialCleanup.dll', 'SocialCleanup.json') {
+            # images/icon.png is the plugin installer's icon (copied to the output by the csproj).
+            foreach ($f in 'SocialCleanup.dll', 'SocialCleanup.json', 'images/icon.png') {
               if ($entries -notcontains $f) { throw "latest.zip is missing $f" }
             }
             $reader = [System.IO.StreamReader]::new($archive.GetEntry('SocialCleanup.json').Open())

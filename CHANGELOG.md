@@ -3,6 +3,10 @@
 Each release's section is what Dalamud's plugin installer shows. CI publishes the section whose heading matches the tag
 (tag `v0.0.1.0` → `## 0.0.1.0`).
 
+## 0.0.1.1
+
+Adds the plugin icon. No functional changes.
+
 ## 0.0.1.0
 
 First release of Social Cleanup: review your friend list in a table and remove the friends you pick in bulk, instead of one at a time. Removals are permanent.
